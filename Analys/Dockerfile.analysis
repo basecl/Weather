@@ -1,0 +1,17 @@
+FROM tiangolo/uwsgi-nginx:python3.10
+
+RUN apt-get update && \
+    apt-get install -y wget && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir cassandra-driver dash plotly pandas dask flask
+
+
+EXPOSE 8080
+
+WORKDIR /app
+
+COPY analysis.py ./
+
+CMD ["python", "analysis.py"]

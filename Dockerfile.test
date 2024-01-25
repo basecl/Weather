@@ -1,0 +1,16 @@
+FROM python:3.10
+
+RUN apt-get update && \
+    apt-get install -y wget && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir pytest kafka-python requests
+
+WORKDIR /test
+
+COPY ./PyTest ./
+COPY ./ETL/Extract/consumer/consumer.py /.
+COPY ./ETL/Extract/producer/producer.py /.
+
+CMD ["pytest", "-s", "-v", "/test"]

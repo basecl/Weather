@@ -1,0 +1,109 @@
+version: "3"
+
+networks:
+  app-tier:
+    driver: bridge
+
+services:
+  kafka:
+    image: 'bitnami/kafka:3.5.1'
+    networks:
+      - app-tier
+    environment:
+      - KAFKA_CFG_NODE_ID=0
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+    healthcheck:
+      test: [ "CMD", "kafka-topics.sh", "--list", "--bootstrap-server", "kafka:9092" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+  cassandra:
+    image: cassandra:4.1.3
+    ports:
+      - 9042:9042
+    volumes:
+      - ~/apps/cassandra:/var/lib/cassandra
+    environment:
+      - CASSANDRA_CLUSTER_NAME=cloudinfra
+    healthcheck:
+        test: ["CMD", "cqlsh", "-u cassandra", "-p cassandra" ,"-e describe keyspaces"]
+        interval: 15s
+        timeout: 10s
+        retries: 5
+    networks:
+      - app-tier
+  cassandra-load-keyspace:
+      container_name: cassandra-load-keyspace
+      image: cassandra:4.1.3
+      depends_on:
+        cassandra:
+          condition: service_healthy
+      volumes:
+        - ./cassandra.cql:/cassandra.cql
+      command: /bin/bash -c "echo loading cassandra keyspace && cqlsh cassandra -f /cassandra.cql"
+      networks:
+        - app-tier
+  spark:
+    build:
+      context: ./ETL/Load_and_Transform/
+      dockerfile: Dockerfile.spark
+    volumes:
+      - ./ETL/Load_and_Transform/:/app
+    depends_on:
+        cassandra-load-keyspace:
+          condition: service_completed_successfully
+        kafka:
+          condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://spark:4040/api/v1/applications"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+        - app-tier
+  consumer:
+    build:
+      context: ./ETL/Extract/consumer/
+      dockerfile: Dockerfile.consumer
+    networks:
+      - app-tier
+    depends_on:
+      kafka:
+        condition: service_healthy
+  download:
+    build:
+      context: ./ETL/Extract/producer/
+      dockerfile: Dockerfile.download
+    networks:
+      - app-tier
+    depends_on:
+      spark:
+        condition: service_healthy
+    volumes:
+      - ./ETL/Extract/producer/:/app
+  analysis:
+    build:
+      context: ./Analys/
+      dockerfile: Dockerfile.analysis
+    ports:
+      - 8080:8080
+    networks:
+      - app-tier
+    depends_on:
+      cassandra-load-keyspace:
+        condition: service_completed_successfully
+    environment:
+      - NGINX_WORKER_PROCESSES=auto
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    networks:
+      - app-tier
+    depends_on:
+      cassandra-load-keyspace:
+        condition: service_completed_successfully

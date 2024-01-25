@@ -1,0 +1,13 @@
+FROM python:3.10
+
+RUN apt-get update && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY consumer.py .
+
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir kafka-python
+
+CMD ["python", "consumer.py"]
