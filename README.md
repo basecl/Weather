@@ -21,6 +21,8 @@ docker-compose up
 
 This will start the services defined in the `docker-compose.yml` file.
 
+Once all services are loaded you can see the result by going to ```0.0.0.0.0:8080/dash-app/```.
+
 ## Services
 
 ### Kafka
